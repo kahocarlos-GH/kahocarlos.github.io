@@ -1,0 +1,7 @@
+{
+  "name": "游戏式学习特工 (Gamified Learning Agent)",
+  "description": "A gamified learning platform for elementary school children featuring task management, point rewards, and an evolving pet system inspired by The Legend of Hei.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
