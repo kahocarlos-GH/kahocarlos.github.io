@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { UserState, Task, Reward, TaskCategory, Voucher } from './types';
+import { UserState, Task, Reward, Voucher } from './types';
 
 interface AppContextType {
   user: UserState;
@@ -23,9 +23,18 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // 1. 初始化用户信息（包含补全逻辑，防止旧版本数据因缺少字段报错）
+  // 安全获取本地存储
+  const safeGetItem = (key: string) => {
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // 1. 初始化用户信息
   const [user, setUser] = useState<UserState>(() => {
-    const saved = localStorage.getItem('agent_user');
+    const saved = safeGetItem('agent_user');
     const defaultState: UserState = {
       isLoggedIn: false,
       username: '',
@@ -42,7 +51,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!saved) return defaultState;
     try {
       const parsed = JSON.parse(saved);
-      // 深度补全：确保旧用户也有新的字段
       return {
         ...defaultState,
         ...parsed,
@@ -50,34 +58,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         vouchers: parsed.vouchers || [],
       };
     } catch (e) {
-      console.error("Failed to parse user data", e);
       return defaultState;
     }
   });
 
   // 2. 初始化任务库
   const [tasks, setTasks] = useState<Task[]>(() => {
-    const saved = localStorage.getItem('agent_tasks');
+    const saved = safeGetItem('agent_tasks');
     return saved ? JSON.parse(saved) : [];
   });
 
   // 3. 初始化奖品库
   const [rewards, setRewards] = useState<Reward[]>(() => {
-    const saved = localStorage.getItem('agent_rewards');
+    const saved = safeGetItem('agent_rewards');
     return saved ? JSON.parse(saved) : [];
   });
 
-  // 4. 数据实时监听持久化
+  // 持久化存储
   useEffect(() => {
-    localStorage.setItem('agent_user', JSON.stringify(user));
+    try {
+      localStorage.setItem('agent_user', JSON.stringify(user));
+    } catch (e) {}
   }, [user]);
 
   useEffect(() => {
-    localStorage.setItem('agent_tasks', JSON.stringify(tasks));
+    try {
+      localStorage.setItem('agent_tasks', JSON.stringify(tasks));
+    } catch (e) {}
   }, [tasks]);
 
   useEffect(() => {
-    localStorage.setItem('agent_rewards', JSON.stringify(rewards));
+    try {
+      localStorage.setItem('agent_rewards', JSON.stringify(rewards));
+    } catch (e) {}
   }, [rewards]);
 
   const getTodayStr = () => new Date().toISOString().split('T')[0];
@@ -96,7 +109,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const register = (username: string, loginPassword: string, parentPin: string, avatarUrl?: string) => {
-    // 注册新用户时保留原有的任务和奖励库（如果已有）
     setUser(prev => ({
       ...prev,
       isLoggedIn: true,
@@ -104,7 +116,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       loginPassword,
       parentPin,
       avatarUrl: avatarUrl || prev.avatarUrl,
-      // 如果是全新初始化，则清空记录，否则保留
       dailyCompletions: prev.dailyCompletions || {},
       vouchers: prev.vouchers || [],
       points: prev.points || 0,
@@ -119,27 +130,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateUser = (updates: Partial<UserState>) => {
     setUser(prev => {
-        // 计算新的 XP
         let currentXp = prev.xp + (updates.xp !== undefined ? updates.xp : 0);
         let currentPoints = prev.points + (updates.points !== undefined ? updates.points : 0);
-        
-        // 等级进化逻辑补强
         let nextLevel = prev.level;
         while (currentXp >= 1000) {
             currentXp -= 1000;
             nextLevel += 1;
         }
         if (currentXp < 0) currentXp = 0;
-
-        // 构建最终状态
-        const newState = { 
-            ...prev, 
-            ...updates, 
-            xp: currentXp, 
-            level: nextLevel,
-            points: currentPoints
-        };
-        return newState;
+        return { ...prev, ...updates, xp: currentXp, level: nextLevel, points: currentPoints };
     });
   };
 
@@ -151,8 +150,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const completeTask = (task: Task) => {
     if (isTaskCompletedToday(task.id)) return;
     const today = getTodayStr();
-    
-    // 同时更新用户信息和完成记录
     setUser(prev => {
       let nextXp = prev.xp + task.xp;
       let nextLevel = prev.level;
@@ -160,7 +157,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         nextXp -= 1000;
         nextLevel += 1;
       }
-
       return {
         ...prev,
         points: prev.points + task.points,
@@ -184,7 +180,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         redeemedAt: new Date().toLocaleString(),
         isUsed: false,
       };
-      
       setUser(prev => ({ 
         ...prev, 
         points: prev.points - reward.points,
